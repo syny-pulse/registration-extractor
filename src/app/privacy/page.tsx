@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { PAID_TIER_CONFIRMED } from "@/lib/config";
 
 export const metadata = { title: "How your documents are handled" };
 
