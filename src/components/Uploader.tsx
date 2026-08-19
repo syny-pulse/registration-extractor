@@ -26,12 +26,14 @@ export function Uploader({
   const inputRef = useRef<HTMLInputElement>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [remaining, setRemaining] = useState(credits);
 
   const accept = useCallback(
     async (file: File) => {
       setError(null);
+      setErrorCode(null);
       setPhase({ kind: "checking", name: file.name });
 
       if (!looksLikePdf(file)) {
@@ -50,6 +52,7 @@ export function Uploader({
 
       if (!inspection.ok) {
         setError(inspection.message);
+        setErrorCode(inspection.code);
         setPhase({ kind: "idle" });
         return;
       }
@@ -64,6 +67,7 @@ export function Uploader({
     const { file, pageCount } = phase;
 
     setError(null);
+    setErrorCode(null);
     setPhase({ kind: "working", name: file.name, pageCount });
 
     const body = new FormData();
@@ -74,13 +78,31 @@ export function Uploader({
       response = await fetch("/api/extract", { method: "POST", body });
     } catch {
       setError("The upload did not complete. Check your connection and try again.");
+      setErrorCode("network");
       setPhase({ kind: "ready", file, pageCount });
       return;
     }
 
     if (!response.ok) {
       const detail = await response.json().catch(() => null);
-      setError(detail?.error ?? "The document could not be processed.");
+
+      if (detail?.error) {
+        setError(detail.error);
+        // A short, fixed code alongside the sentence. It is what makes a report
+        // actionable without anyone having to open the platform logs, and it
+        // carries nothing from the document.
+        setErrorCode(typeof detail.code === "string" ? detail.code : null);
+      } else {
+        // No JSON body at all means the failure happened before our handler
+        // could answer — the platform rejected or killed the request.
+        setError(
+          response.status === 413
+            ? "The file is too large to upload. Re-scan at 200 DPI in grayscale."
+            : "The server did not respond properly. Please try again.",
+        );
+        setErrorCode(`http_${response.status}`);
+      }
+
       setPhase({ kind: "ready", file, pageCount });
       return;
     }
@@ -108,6 +130,7 @@ export function Uploader({
   function reset() {
     setPhase({ kind: "idle" });
     setError(null);
+    setErrorCode(null);
     if (inputRef.current) inputRef.current.value = "";
   }
 
@@ -248,7 +271,16 @@ export function Uploader({
         </div>
       )}
 
-      {error && <Notice tone="error">{error}</Notice>}
+      {error && (
+        <Notice tone="error">
+          {error}
+          {errorCode && (
+            <span className="mt-1 block font-mono text-xs font-normal text-muted">
+              {errorCode}
+            </span>
+          )}
+        </Notice>
+      )}
     </div>
   );
 }
