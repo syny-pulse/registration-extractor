@@ -1,0 +1,47 @@
+{
+  "name": "registration-extractor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Turns scanned paper registration sheets into an Excel file, without retaining them.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/syny-pulse/registration-extractor.git"
+  },
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "check": "node scripts/check-setup.mjs",
+    "diagnose": "node scripts/diagnose-pdf.mjs",
+    "init-db": "node scripts/init-db.mjs",
+    "create-admin": "node scripts/create-admin.mjs",
+    "make-sample-pdf": "node scripts/make-sample-pdf.mjs"
+  },
+  "dependencies": {
+    "@cantoo/pdf-lib": "^2.9.1",
+    "@google/genai": "^2.17.1",
+    "@neondatabase/serverless": "^1.1.0",
+    "bcryptjs": "^3.0.3",
+    "exceljs": "^4.4.0",
+    "next": "^16.3.1",
+    "next-auth": "5.0.0-beta.32",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.5",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^24.9.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "dotenv": "^17.2.3",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
+  }
+}

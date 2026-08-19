@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+/*
+ * Two colours and a handful of grays. State is carried by weight, border, and
+ * motion rather than by hue — which is why UNCLEAR counts render bold rather
+ * than red. A consequence worth keeping: every text/background pair in the app
+ * is black-on-white or white-on-black, so contrast accessibility is satisfied
+ * without anyone having to check.
+ */
+@theme {
+  --color-ink: #000000;
+  --color-paper: #ffffff;
+  --color-rule: #e4e4e4;
+  --color-rule-strong: #c8c8c8;
+  --color-muted: #6b6b6b;
+  --color-wash: #f7f7f7;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* A single visible focus treatment everywhere, since the palette gives us no
+   colour to spend on it. */
+:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+}
+
+@keyframes indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+/* The extraction progress bar. Duration is unknowable ahead of time — it
+   depends on the model — so this reads as "working" without implying a
+   percentage it cannot honour. */
+.progress-sweep {
+  animation: indeterminate 1.4s ease-in-out infinite;
+}

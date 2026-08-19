@@ -1,0 +1,24 @@
+node_modules/
+.next/
+out/
+build/
+
+.env
+.env.local
+.env*.local
+
+# Service-account material must never be committed. It lives in an env var.
+*.pem
+*-service-account*.json
+gcp-key*.json
+
+next-env.d.ts
+*.tsbuildinfo
+
+# Test fixtures may contain real registration data.
+/tmp/
+/samples/
+!/samples/.gitkeep
+
+.DS_Store
+.vercel
