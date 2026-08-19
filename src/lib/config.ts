@@ -28,14 +28,15 @@ export const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? "";
  * Whether the operator has confirmed the API key belongs to a **paid-tier**
  * project.
  *
- * This matters more than it looks. On the free tier Google uses submitted
- * content to develop its products and human reviewers may read it; on the paid
- * tier it does neither. The key itself looks identical either way, and nothing
- * in the API response reveals which tier you are on — so code cannot check
- * this, and the privacy notice must not claim paid-tier terms until a person
- * has confirmed them.
+ * Nothing reads this any more. /privacy used to vary its wording on it and no
+ * longer does, so setting `GEMINI_PAID_TIER_CONFIRMED` currently changes
+ * nothing anywhere in the app. It is kept only as the hook to wire back up if
+ * the notice should ever distinguish the tiers again.
  *
- * Defaults to false so the cautious text is what ships.
+ * The distinction it was built for is still real: on the free tier Google uses
+ * submitted content to develop its products and human reviewers may read it; on
+ * the paid tier it does neither. The key looks identical either way and no API
+ * response reveals the tier, so only a person can confirm it.
  */
 export const PAID_TIER_CONFIRMED = process.env.GEMINI_PAID_TIER_CONFIRMED === "true";
 

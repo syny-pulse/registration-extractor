@@ -202,13 +202,18 @@ Framework detection should say Next.js; leave the build settings alone.
 
 | Variable | Value |
 |---|---|
-| `AUTH_SECRET` | a fresh 32-byte secret, not your local one |
+| `AUTH_SECRET` | a fresh 32-byte secret, **not** your local one |
 | `DATABASE_URL` | the same pooled Neon string |
 | `GEMINI_API_KEY` | your paid-tier key |
 | `GEMINI_MODEL` | `gemini-3.7-flash` |
-| `GEMINI_PAID_TIER_CONFIRMED` | `true` |
 | `MAX_PAGES` | `10` |
 | `MAX_UPLOAD_BYTES` | `4000000` |
+
+Set every one for **Production, Preview and Development**, or preview builds
+fail with a missing `AUTH_SECRET`.
+
+`GEMINI_PAID_TIER_CONFIRMED` is no longer read by anything — `/privacy` stopped
+varying its wording on the tier — so there is no need to set it.
 
 You do **not** need `AUTH_URL` — Auth.js detects the Vercel deployment URL.
 
