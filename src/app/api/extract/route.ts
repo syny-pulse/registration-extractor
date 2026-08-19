@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { errorResponse } from "@/lib/api";
 import { MAX_PAGES, MAX_UPLOAD_BYTES } from "@/lib/config";
-import { extractTable } from "@/lib/gemini";
+import { ExtractionError, extractTable } from "@/lib/gemini";
 import { HttpError, requireUser } from "@/lib/guards";
 import { describeError, log } from "@/lib/log";
 import { inspectPdf, looksLikePdf } from "@/lib/pdf";
@@ -13,14 +13,18 @@ import { buildWorkbook } from "@/lib/xlsx";
 export const runtime = "nodejs";
 
 /**
- * A ceiling, not a raise. Fluid compute gives Node functions 300s by default on
- * every plan including Hobby, so this lowers the limit to bound cost on a
- * request that has gone wrong rather than to buy more time.
+ * The platform maximum on Hobby, and the default everywhere with Fluid compute.
+ *
+ * This was 120s, chosen to bound cost. That was the wrong instinct: billing is
+ * on *active CPU*, and a request spent waiting on the model burns almost none —
+ * so a generous ceiling costs nearly nothing, while a tight one turns a slow
+ * document into a failed extraction. Scanned images are far slower to read than
+ * the text PDFs used in testing, which is exactly the case that needs the room.
  */
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 /** Leaves headroom under maxDuration to build the workbook and respond. */
-const MODEL_TIMEOUT_MS = 100_000;
+const MODEL_TIMEOUT_MS = 260_000;
 
 export async function POST(request: Request) {
   const startedAt = Date.now();
@@ -94,10 +98,18 @@ export async function POST(request: Request) {
         ms: Date.now() - startedAt,
         reason: describeError(err),
       });
+
+      // Say what actually went wrong where we know it. A blanket "please try
+      // again" is wrong for a missing API key or an exhausted quota — retrying
+      // those forever will never work, and the person hitting it has no way to
+      // tell that from a transient blip.
+      const known = err instanceof ExtractionError ? err : null;
       return NextResponse.json(
         {
           error:
-            "The document could not be processed. Your credit has not been used — please try again.",
+            (known?.userMessage ?? "The document could not be processed. Please try again.") +
+            " Your credit has not been used.",
+          code: known?.code ?? "unknown",
         },
         { status: 502 },
       );

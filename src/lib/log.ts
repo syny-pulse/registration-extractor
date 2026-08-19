@@ -37,6 +37,15 @@ export function log(entry: LogEntry): void {
 export function describeError(err: unknown): string {
   if (typeof err === "object" && err !== null) {
     const name = err.constructor?.name ?? "Error";
+
+    // ExtractionError's message is a code we assigned in src/lib/gemini.ts, not
+    // free text — it is built from a fixed vocabulary plus at most an HTTP
+    // status or a finish reason. Safe to log whole, and the only thing that
+    // makes a failed extraction diagnosable after the fact.
+    if (name === "ExtractionError") {
+      return `ExtractionError:${(err as Error).message}`;
+    }
+
     const status = (err as { status?: unknown }).status;
     if (typeof status === "number") return `${name}:${status}`;
     const code = (err as { code?: unknown }).code;

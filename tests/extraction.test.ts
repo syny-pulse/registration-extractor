@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import ExcelJS from "exceljs";
 import { PDFDocument, StandardFonts } from "@cantoo/pdf-lib";
 
-import { normalize } from "@/lib/gemini";
+import { ExtractionError, normalize } from "@/lib/gemini";
 import { describeError } from "@/lib/log";
 import { inspectPdf, looksLikePdf } from "@/lib/pdf";
 import { extractionSchema } from "@/lib/validation";
@@ -204,13 +204,13 @@ describe("model response normalization", () => {
         columns: ["Name"],
         rows: Array.from({ length: 5001 }, () => ({ page: 1, values: ["x"] })),
       }),
-    ).toThrow(/implausible/);
+    ).toThrow(ExtractionError);
   });
 
   it("refuses an implausible number of columns", () => {
     expect(() =>
       normalize({ columns: Array.from({ length: 41 }, (_, i) => `c${i}`), rows: [] }),
-    ).toThrow(/implausible/);
+    ).toThrow(ExtractionError);
   });
 });
 
@@ -276,6 +276,40 @@ describe("workbook", () => {
     const sheet = await readBack(await buildWorkbook(extraction));
     expect(sheet.getRow(1).font?.bold).toBe(true);
     expect(sheet.views[0]).toMatchObject({ state: "frozen", ySplit: 1 });
+  });
+});
+
+describe("failure reporting", () => {
+  it("logs an ExtractionError's code, so a failure is diagnosable", () => {
+    const err = new ExtractionError("api_error", "Quota exhausted.", "429");
+    expect(describeError(err)).toBe("ExtractionError:api_error:429");
+  });
+
+  it("still says something useful when there is no detail to add", () => {
+    const err = new ExtractionError("no_api_key", "No key configured.");
+    expect(describeError(err)).toBe("ExtractionError:no_api_key");
+  });
+
+  it("keeps the user-facing message separate from the logged code", () => {
+    const err = new ExtractionError("timeout", "The document took too long to read.");
+    // The log gets the code; the human gets the sentence. Neither carries
+    // anything from the document.
+    expect(describeError(err)).not.toContain("took too long");
+    expect(err.userMessage).toContain("took too long");
+  });
+
+  it("refuses an implausible row count with a code, not a bare Error", () => {
+    try {
+      normalize({
+        columns: ["Name"],
+        rows: Array.from({ length: 5001 }, () => ({ page: 1, values: ["x"] })),
+      });
+      throw new Error("should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ExtractionError);
+      expect((err as ExtractionError).code).toBe("too_large_result");
+      expect(describeError(err)).toBe("ExtractionError:too_large_result:rows");
+    }
   });
 });
 
