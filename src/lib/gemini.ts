@@ -7,6 +7,7 @@ import {
 } from "@google/genai";
 
 import { GEMINI_API_KEY, GEMINI_MODEL, MAX_COLUMNS, MAX_ROWS } from "./config";
+import type { UploadSource } from "./upload";
 import { extractionSchema, type Extraction } from "./validation";
 
 /**
@@ -18,9 +19,18 @@ import { extractionSchema, type Extraction } from "./validation";
  * than a failure, which is also why the workbook renders it in bold — it is
  * meant to be seen and resolved, not skimmed past.
  */
-const PROMPT = `You are transcribing a scanned paper registration or sign-in sheet.
+const PROMPT = `You are transcribing scanned or photographed paper registration or sign-in sheets.
 
-Return the table exactly as it appears on the page.
+The pages are supplied in order. A page may be a page of a PDF or a photograph
+of a single sheet of paper; treat them the same way.
+
+Return the table exactly as it appears on the pages.
+
+TITLE
+- "title" is a short label for what these sheets are: the event, meeting or class name printed at the top, and the date if one is printed.
+- Take it only from what is printed or written on the page. Do not invent one, and do not describe the sheet ("Registration Form") when it names no event.
+- Keep it under 60 characters, for example "Northbrook Trust AGM 2026-03-14".
+- If neither an event name nor a date appears anywhere, use an empty string.
 
 COLUMNS
 - Use the sheet's own printed column headers, in left-to-right order, as "columns".
@@ -29,7 +39,7 @@ COLUMNS
 
 ROWS
 - One entry in "rows" per filled-in data row, in the order they appear.
-- "page" is the 1-based page the row was read from.
+- "page" is the 1-based position of the page the row was read from, counting the supplied pages in the order given.
 - "values" must have exactly one entry per column, in the same order as "columns".
 - Do not emit the printed header row itself as data.
 - Skip rows that are entirely blank.
@@ -39,6 +49,7 @@ READING THE HANDWRITING
 - Use the exact string UNCLEAR for any cell you cannot read with confidence.
 - Use an empty string for a cell that is genuinely blank.
 - For a signature that is a mark rather than legible text, use UNCLEAR.
+- A photograph may be rotated, skewed, shadowed or cropped. Read it as it lies; a cell you cannot make out because of the photograph is UNCLEAR like any other.
 
 NEVER GUESS. Do not complete a partial name, do not correct a spelling, do not
 infer a value from another row or from context, and do not invent an entry that
@@ -48,6 +59,11 @@ is not physically on the page. If you are unsure, UNCLEAR is the correct answer.
 const RESPONSE_SCHEMA = {
   type: "object",
   properties: {
+    title: {
+      type: "string",
+      description:
+        "The printed event or meeting name and date, if any. Empty string if the sheet names neither.",
+    },
     columns: {
       type: "array",
       description: "The sheet's column headers, left to right.",
@@ -98,6 +114,8 @@ function getClient(): GoogleGenAI {
 export type ExtractionResult = {
   extraction: Extraction;
   unclearCount: number;
+  /** The sheet's own event/date label, or null if it printed neither. */
+  title: string | null;
 };
 
 /**
@@ -219,14 +237,23 @@ function fromSdkError(err: unknown): ExtractionError {
 }
 
 /**
- * Sends the PDF to Gemini and returns the validated table.
+ * Sends the pages to Gemini and returns the validated table.
  *
- * The document goes over as inline base64 in a single request — no upload to
- * the Files API, no intermediate storage, nothing to clean up afterwards. At
- * ten pages under 4 MB this is comfortably inside the inline limit.
+ * A job is either one PDF or an ordered set of photos, and both arrive here as
+ * the same list of parts — the model is told to treat a photographed sheet as a
+ * page, so nothing below needs to know which it got.
+ *
+ * Everything goes over as inline base64 in a single request — no upload to the
+ * Files API, no intermediate storage, nothing to clean up afterwards. Capped at
+ * ten pages under 4 MB in total, this is comfortably inside the inline limit.
+ *
+ * Part order matters: the pages precede the instruction so that "the pages
+ * supplied in order" in the prompt refers to something the model has already
+ * seen, and so page 1 is the first part rather than whichever the model
+ * considers first.
  */
 export async function extractTable(
-  pdfBytes: Uint8Array,
+  sources: UploadSource[],
   signal?: AbortSignal,
 ): Promise<ExtractionResult> {
   const ai = getClient();
@@ -239,7 +266,12 @@ export async function extractTable(
         {
           role: "user",
           parts: [
-            createPartFromBase64(Buffer.from(pdfBytes).toString("base64"), "application/pdf"),
+            ...sources.map((source) =>
+              createPartFromBase64(
+                Buffer.from(source.bytes).toString("base64"),
+                source.mimeType,
+              ),
+            ),
             createPartFromText(PROMPT),
           ],
         },
@@ -349,8 +381,20 @@ export function normalize(extraction: Extraction): ExtractionResult {
     return { page: row.page, values };
   });
 
+  // The model is asked for an empty string when the sheet names no event, and
+  // returns UNCLEAR under the same rule that governs every other cell. Both mean
+  // "nothing usable", and both must become null rather than a file called
+  // `UNCLEAR.xlsx`.
+  const raw = (extraction.title ?? "").trim();
+  const title = raw && raw !== "UNCLEAR" ? raw : null;
+
   return {
-    extraction: { columns: extraction.columns.map((c) => c.trim()), rows },
+    extraction: {
+      title: title ?? "",
+      columns: extraction.columns.map((c) => c.trim()),
+      rows,
+    },
     unclearCount,
+    title,
   };
 }

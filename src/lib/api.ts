@@ -13,7 +13,11 @@ import { describeError, log } from "./log";
 export function errorResponse(event: string, err: unknown, userId?: string) {
   if (err instanceof HttpError) {
     log({ event, status: "rejected", userId, reason: err.code });
-    return NextResponse.json({ error: err.message }, { status: err.status });
+    // The code goes back alongside the sentence for the same reason the
+    // extraction failures carry one: it is short, fixed, drawn from our own
+    // vocabulary, and makes a bug report actionable without anyone opening the
+    // platform logs. It carries nothing from the document.
+    return NextResponse.json({ error: err.message, code: err.code }, { status: err.status });
   }
 
   log({ event, status: "error", userId, reason: describeError(err) });

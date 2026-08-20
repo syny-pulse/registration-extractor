@@ -122,14 +122,15 @@ npm run make-sample-pdf -- --pages 2
 npm run make-sample-pdf -- --pages 11
 ```
 
-**3.2** Run the offline suite — 37 tests, no network, no services:
+**3.2** Run the offline suite — no network, no services:
 
 ```bash
 npm test
 ```
 
-This covers the schema, the credit deduction under concurrency, PDF gatekeeping,
-the workbook, and log redaction.
+This covers the schema, the credit deduction under concurrency, PDF and photo
+gatekeeping, page ordering, workbook naming, the workbook itself, and log
+redaction.
 
 **3.3** Start the app:
 
@@ -144,11 +145,18 @@ npm run dev
 | Login | Sign in as your admin | Lands on `/admin` |
 | Admin | Create a user with 5 credits | Appears in the table; password shown once |
 | User | Sign out, sign in as that user | Lands on `/extract`, shows 5 credits |
-| Extract | Drop `samples/sample-sheet-2p.pdf` | Downloads `registrations.xlsx`; credits drop to 4 |
+| Extract | Drop `samples/sample-sheet-2p.pdf` | Downloads `sample-sheet-2p.xlsx`; credits drop to 4 |
 | Limit | Drop `samples/sample-sheet-11p.pdf` | Rejected instantly, **no upload**, credits unchanged |
+| Photos | Drop two phone photos of sign-in sheets | "Preparing…", then both listed in page order; one credit |
+| Mixing | Drop a PDF and a photo together | Rejected as `mixed_types`, **no upload** |
 
-**3.5** Open the downloaded xlsx. Columns should match the sheet, with `Page`
-prepended. Anything the model could not read confidently is the literal text
+The photo row is the one worth doing on real hardware rather than with files
+copied off a laptop. It exercises the browser-side resize, which is what makes a
+set of 3 MB phone photos fit inside a 4 MB request at all.
+
+**3.5** Open the downloaded xlsx. It is named after the PDF you uploaded, or —
+for photos — after the event and date printed on the sheet. Columns should match
+the sheet, with `Page` prepended. Anything the model could not read confidently is the literal text
 `UNCLEAR`, in bold.
 
 **3.6** Two checks worth doing by hand, because they are the ones that would fail
@@ -206,8 +214,8 @@ Framework detection should say Next.js; leave the build settings alone.
 | `DATABASE_URL` | the same pooled Neon string |
 | `GEMINI_API_KEY` | your paid-tier key |
 | `GEMINI_MODEL` | `gemini-3.7-flash` |
-| `MAX_PAGES` | `10` |
-| `MAX_UPLOAD_BYTES` | `4000000` |
+| `MAX_PAGES` | `10` (also the photo limit) |
+| `MAX_UPLOAD_BYTES` | `4000000` (the whole request, not per file) |
 
 Set every one for **Production, Preview and Development**, or preview builds
 fail with a missing `AUTH_SECRET`.
@@ -238,6 +246,12 @@ and no names anywhere.
 - **4.5 MB request cap.** `MAX_UPLOAD_BYTES` sits below it so users get a useful
   message rather than a bare platform `413`. Tell people to scan at 200 DPI
   grayscale — roughly 300 KB per page, so ten pages fit comfortably.
+- **Photos are resized in the browser to meet that cap**, since a phone photo is
+  2–5 MB on its own. Nothing to configure; raising `MAX_UPLOAD_BYTES` will not
+  help, because the platform cap above it is the real ceiling. The exception is
+  HEIC: Chrome and Firefox cannot decode one, so an iPhone photo uploaded from a
+  desktop is sent at full size and may be refused. Uploading from the phone
+  itself, or saving as JPEG first, both work.
 - **One database for both.** Local and production share the Neon project, which
   is fine at this size. If you'd rather separate them, create a Neon branch for
   development and point `.env.local` at that instead.

@@ -27,6 +27,12 @@ export const updateUserSchema = z
  * an array without requiring it to be the right length.
  */
 export const extractionSchema = z.object({
+  /**
+   * The printed event name and/or date, used to name the workbook for a photo
+   * upload — photos have no useful file name of their own. Optional because a
+   * sheet may print neither, in which case the caller falls back to the date.
+   */
+  title: z.string().optional(),
   columns: z.array(z.string()).min(1),
   rows: z.array(
     z.object({

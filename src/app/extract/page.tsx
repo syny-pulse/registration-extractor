@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { SignOutButton } from "@/components/SignOutButton";
 import { Uploader } from "@/components/Uploader";
-import { MAX_PAGES, MAX_UPLOAD_BYTES } from "@/lib/config";
+import { MAX_IMAGES, MAX_PAGES, MAX_UPLOAD_BYTES } from "@/lib/config";
 import { getUserById } from "@/lib/users";
 
 // The credit count must be the live balance, never a cached render.
@@ -40,6 +40,7 @@ export default async function ExtractPage() {
       <Uploader
         credits={me.credits}
         maxPages={MAX_PAGES}
+        maxImages={MAX_IMAGES}
         maxUploadBytes={MAX_UPLOAD_BYTES}
       />
 

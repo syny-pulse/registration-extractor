@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 
 import { errorResponse } from "@/lib/api";
-import { MAX_PAGES, MAX_UPLOAD_BYTES } from "@/lib/config";
+import { MAX_IMAGES, MAX_PAGES, MAX_UPLOAD_BYTES } from "@/lib/config";
+import { attachmentHeader, workbookBaseName } from "@/lib/filename";
 import { ExtractionError, extractTable } from "@/lib/gemini";
 import { HttpError, requireUser } from "@/lib/guards";
 import { describeError, log } from "@/lib/log";
-import { inspectPdf, looksLikePdf } from "@/lib/pdf";
+import { inspectUpload } from "@/lib/upload";
 import { recordFailure, spendCredit } from "@/lib/users";
 import { buildWorkbook } from "@/lib/xlsx";
 
@@ -45,34 +46,24 @@ export async function POST(request: Request) {
     }
 
     // ---- 2. What did they send? --------------------------------------------
+    // One PDF, or up to MAX_IMAGES photos, under the same field name. getAll
+    // covers both: a single-file selection is just a list of one.
     const form = await request.formData();
-    const file = form.get("file");
-
-    if (!(file instanceof File)) {
-      throw new HttpError(400, "no_file", "No file was uploaded.");
-    }
-    if (!looksLikePdf(file)) {
-      throw new HttpError(400, "not_pdf", "Only PDF files can be processed.");
-    }
-    if (file.size > MAX_UPLOAD_BYTES) {
-      throw new HttpError(
-        413,
-        "too_large",
-        `This file is too large. The limit is ${(MAX_UPLOAD_BYTES / 1_000_000).toFixed(1)} MB — re-scan at 200 DPI in grayscale.`,
-      );
-    }
-
-    const bytes = new Uint8Array(await file.arrayBuffer());
+    const files = form.getAll("file").filter((entry): entry is File => entry instanceof File);
 
     // The browser already ran these checks to avoid a pointless upload. They
     // run again here because that pass is a convenience for the user, not a
     // control — anything can POST to this endpoint.
-    const inspection = await inspectPdf(bytes, {
+    const inspection = await inspectUpload(files, {
       maxPages: MAX_PAGES,
+      maxImages: MAX_IMAGES,
       maxBytes: MAX_UPLOAD_BYTES,
     });
     if (!inspection.ok) {
-      throw new HttpError(400, inspection.code, inspection.message);
+      // A body over the limit is the one rejection with a status of its own;
+      // everything else here is a malformed request.
+      const status = inspection.code === "too_large" ? 413 : 400;
+      throw new HttpError(status, inspection.code, inspection.message);
     }
     pageCount = inspection.pageCount;
 
@@ -82,11 +73,22 @@ export async function POST(request: Request) {
     // credit.
     let workbook: Buffer;
     let unclearCount: number;
+    let baseName: string;
 
     try {
       const timeout = AbortSignal.timeout(MODEL_TIMEOUT_MS);
-      const result = await extractTable(bytes, timeout);
+      const result = await extractTable(inspection.sources, timeout);
       unclearCount = result.unclearCount;
+
+      // A PDF is named after itself; a set of photos is named after the event
+      // and date the model read off the sheet, because IMG_0042.HEIC is not a
+      // name anyone can find a file by later.
+      baseName = workbookBaseName({
+        kind: inspection.kind,
+        pdfName: inspection.files[0]?.name ?? null,
+        title: result.title,
+      });
+
       workbook = await buildWorkbook(result.extraction);
     } catch (err) {
       await recordFailure(user.id, pageCount).catch(() => {});
@@ -136,7 +138,7 @@ export async function POST(request: Request) {
       headers: {
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": 'attachment; filename="registrations.xlsx"',
+        "Content-Disposition": attachmentHeader(baseName),
         "Content-Length": String(workbook.byteLength),
         "Cache-Control": "no-store, no-cache, must-revalidate, private",
         // Read by the client to show the summary line. Counts only — no content.

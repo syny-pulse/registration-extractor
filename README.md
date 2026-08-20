@@ -1,11 +1,11 @@
 # Registration Extractor
 
-Turns a scanned paper registration sheet into a spreadsheet, without keeping the
-sheet.
+Turns scanned or photographed paper registration sheets into a spreadsheet,
+without keeping the sheets.
 
 Someone runs an event, collects handwritten sign-ins on paper, and needs the data
-as an Excel file. This does that in one step: upload the scan, download the
-workbook.
+as an Excel file. This does that in one step: upload a scanned PDF — or just
+photograph each sheet with a phone — and download the workbook.
 
 The constraint that shapes the whole design is **retention**. Attendee names and
 contact details are personal data the operator does not want to be custodian of,
@@ -30,6 +30,7 @@ is the entire blast radius.
 | Model | Gemini API `gemini-3.7-flash` via `@google/genai` |
 | Excel | `exceljs`, built in memory |
 | PDF | `@cantoo/pdf-lib`, for page counting on both client and server |
+| Photos | JPEG, PNG, WebP, HEIC/HEIF — the formats the Gemini API decodes inline |
 | Styling | Tailwind v4 (CSS-first config) |
 
 ---
@@ -114,13 +115,17 @@ while they are being read.**
 1. Resolve the session, then re-read the user **from the database** — the JWT
    proves identity, not state.
 2. Refuse with `402` if the balance is under one credit.
-3. Validate the upload: PDF, within the size cap, within the page limit, not
-   encrypted. The browser already checked all of this to avoid a pointless
-   upload; the server checks it again because the browser is not a control.
-4. Send the PDF bytes inline to Gemini in a single call. No intermediate upload,
-   nothing to clean up.
+3. Validate the upload (`inspectUpload` in [src/lib/upload.ts](src/lib/upload.ts)):
+   either one PDF or up to `MAX_PAGES` photos, never a mix; within the size cap
+   for the whole request; within the page limit; not encrypted; and, for photos,
+   actually the format the bytes say they are. The browser already checked all
+   of this to avoid a pointless upload; the server checks it again because the
+   browser is not a control.
+4. Send the pages inline to Gemini in a single call — the PDF, or every photo in
+   page order. No intermediate upload, nothing to clean up.
 5. Validate the response against a schema, square up row widths, build the
-   workbook in memory.
+   workbook in memory, and name it — after the PDF, or after the event and date
+   the model read off a photographed sheet.
 6. Charge one credit and write the usage row — **as a single SQL statement**.
 7. Stream the xlsx back.
 
@@ -161,7 +166,7 @@ If you add logging, add it there.
 ## Testing
 
 ```bash
-npm test          # 37 tests, no external services required
+npm test          # no external services required
 npm run typecheck
 npm run build
 ```
@@ -174,7 +179,10 @@ deductions at a three-credit account and asserts the invariant that matters:
 three successes, three log rows, balance zero.
 
 `tests/extraction.test.ts` covers PDF gatekeeping, row normalization, the
-workbook, and log redaction.
+workbook, and log redaction. `tests/uploads.test.ts` covers the photo path:
+format detection from magic numbers rather than file names, page ordering, the
+per-request size cap, and workbook naming — including what happens when the
+model-supplied title is hostile.
 
 `npm run make-sample-pdf` writes synthetic sheets to `samples/` using invented
 names, so nobody has to hand a real sign-in sheet to a test run:
@@ -195,6 +203,9 @@ you need a genuine scan.
   re-read works and the UI gate is not load-bearing.
 - **Page limit, server side.** `curl` the 11-page sample straight at
   `/api/extract`, bypassing the browser check entirely. Expect `400`.
+- **Photo path, end to end.** Photograph two sign-in sheets with a phone, upload
+  both, and check that the workbook's `Page` column matches which sheet each row
+  came from, and that the file is named after the event printed on the sheet.
 - **Failure is free.** Point `GEMINI_MODEL` at a nonsense model id. The request
   should fail, credits should be unchanged, and a `failed` row should appear.
 - **Retention.** `grep` the dev server output for a name from the test sheet.
@@ -210,6 +221,14 @@ Vercel, Node runtime. Worth knowing:
   sits below that so users get a useful message instead of a bare platform `413`.
   Scanning at 200 DPI in grayscale keeps a page around 300 KB, which is plenty for
   handwriting.
+- **That cap is why photos are re-encoded in the browser.** A photo off a current
+  phone is 2–5 MB, so ten of them would exceed the body limit several times over
+  and the photo path would be unusable at its stated limit. `shrinkPhotos` in
+  [src/lib/downscale.ts](src/lib/downscale.ts) resizes each one to ~190 DPI across
+  an A4 sheet — the same quality bar the scanning advice assumes — and drops the
+  EXIF block, GPS included, on the way past. HEIC is the gap: Chrome and Firefox
+  cannot decode one, so an iPhone photo uploaded from a desktop is sent as-is and
+  may be refused on size. The message says so.
 - **Function duration:** with Fluid compute (default on new projects) the Node
   default is 300s on every plan, Hobby included. `maxDuration = 120` on the
   extract route is therefore a ceiling we *lower* to bound cost — not a limit

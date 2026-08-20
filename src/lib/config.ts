@@ -10,14 +10,34 @@
 export const MAX_PAGES = Number(process.env.MAX_PAGES ?? 10);
 
 /**
+ * The photo limit is the page limit: a photo of one sheet of paper is a page,
+ * so ten photos and a ten-page PDF are the same amount of work and cost the
+ * same single credit. Kept as an alias rather than a second env var so the two
+ * cannot drift apart and leave the UI quoting one number and the server
+ * enforcing another.
+ */
+export const MAX_IMAGES = MAX_PAGES;
+
+/**
  * 4 MB. Vercel rejects request bodies over 4.5 MB with a bare 413 before our
  * code runs, so we cap below that and reject it ourselves with a message the
  * user can act on.
  */
 export const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_BYTES ?? 4_000_000);
 
-/** Guards against a malformed model response turning into a runaway workbook. */
-export const MAX_ROWS = 5000;
+/**
+ * Guards against a malformed model response turning into a runaway workbook.
+ *
+ * The row cap was 5000 and is now double that. Photo uploads made the old
+ * number reachable by an honest document rather than only by a broken one: ten
+ * phone photos of a densely packed sign-in sheet carry far more rows than the
+ * ten-page text PDFs this was originally sized against, and a legitimate
+ * extraction failing on a guard meant for malformed output is the wrong
+ * outcome. The column cap is untouched -- no registration sheet has 40 columns,
+ * so a response claiming more than that is still evidence of a broken response,
+ * not a big one.
+ */
+export const MAX_ROWS = 10_000;
 export const MAX_COLUMNS = 40;
 
 export const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-3.7-flash";
@@ -42,10 +62,12 @@ export const PAID_TIER_CONFIRMED = process.env.GEMINI_PAID_TIER_CONFIRMED === "t
 
 export type Limits = {
   maxPages: number;
+  maxImages: number;
   maxUploadBytes: number;
 };
 
 export const limits: Limits = {
   maxPages: MAX_PAGES,
+  maxImages: MAX_IMAGES,
   maxUploadBytes: MAX_UPLOAD_BYTES,
 };

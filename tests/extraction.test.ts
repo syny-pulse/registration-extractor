@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import ExcelJS from "exceljs";
 import { PDFDocument, StandardFonts } from "@cantoo/pdf-lib";
 
+import { MAX_COLUMNS, MAX_ROWS } from "@/lib/config";
 import { ExtractionError, normalize } from "@/lib/gemini";
 import { describeError } from "@/lib/log";
 import { inspectPdf, looksLikePdf } from "@/lib/pdf";
@@ -198,19 +199,50 @@ describe("model response normalization", () => {
     expect(unclearCount).toBe(3);
   });
 
+  it("accepts a response right at the row cap", () => {
+    // The cap was doubled when photo uploads made it reachable by an honest
+    // document. Pinning the boundary from the constant keeps this test honest
+    // if it moves again.
+    const { extraction } = normalize({
+      columns: ["Name"],
+      rows: Array.from({ length: MAX_ROWS }, () => ({ page: 1, values: ["x"] })),
+    });
+    expect(extraction.rows).toHaveLength(MAX_ROWS);
+  });
+
   it("refuses an implausible number of rows instead of building the workbook", () => {
     expect(() =>
       normalize({
         columns: ["Name"],
-        rows: Array.from({ length: 5001 }, () => ({ page: 1, values: ["x"] })),
+        rows: Array.from({ length: MAX_ROWS + 1 }, () => ({ page: 1, values: ["x"] })),
       }),
     ).toThrow(ExtractionError);
   });
 
   it("refuses an implausible number of columns", () => {
     expect(() =>
-      normalize({ columns: Array.from({ length: 41 }, (_, i) => `c${i}`), rows: [] }),
+      normalize({
+        columns: Array.from({ length: MAX_COLUMNS + 1 }, (_, i) => `c${i}`),
+        rows: [],
+      }),
     ).toThrow(ExtractionError);
+  });
+
+  it("carries the sheet's own event label through as the workbook title", () => {
+    const { title } = normalize({
+      title: "  Northbrook Trust AGM 2026-03-14  ",
+      columns: ["Name"],
+      rows: [],
+    });
+    expect(title).toBe("Northbrook Trust AGM 2026-03-14");
+  });
+
+  it("treats a missing, empty or UNCLEAR title as no title at all", () => {
+    // UNCLEAR is the model's answer for anything it cannot read, headings
+    // included. A file called UNCLEAR.xlsx would be an absurd outcome.
+    expect(normalize({ columns: ["Name"], rows: [] }).title).toBeNull();
+    expect(normalize({ title: "   ", columns: ["Name"], rows: [] }).title).toBeNull();
+    expect(normalize({ title: "UNCLEAR", columns: ["Name"], rows: [] }).title).toBeNull();
   });
 });
 
@@ -302,7 +334,7 @@ describe("failure reporting", () => {
     try {
       normalize({
         columns: ["Name"],
-        rows: Array.from({ length: 5001 }, () => ({ page: 1, values: ["x"] })),
+        rows: Array.from({ length: MAX_ROWS + 1 }, () => ({ page: 1, values: ["x"] })),
       });
       throw new Error("should have thrown");
     } catch (err) {

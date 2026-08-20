@@ -17,7 +17,8 @@ export type PdfRejection =
 
 export type PdfInspection = { ok: true; pageCount: number } | PdfRejection;
 
-function formatMb(bytes: number): string {
+/** Shared with the image path in ./upload so both quote sizes the same way. */
+export function formatMb(bytes: number): string {
   return `${(bytes / 1_000_000).toFixed(1)} MB`;
 }
 
